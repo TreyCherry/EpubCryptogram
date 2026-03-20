@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>EPUB Cryptogram Puzzle</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.0/jszip.min.js"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 10px;
+      padding: 0;
+    }
+    h1, h2 {
+      margin-bottom: 10px;
+      text-align: center;
+    }
+    #uploader {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 1em;
+      margin: 5px;
+    }
+    .puzzle-block {
+      margin-bottom: 20px;
+      text-align: left;
+    }
+    .puzzle-line {
+      font-family: monospace;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      border: 1px solid #ccc;
+      padding: 10px;
+      margin: 0;
+      margin-bottom: 10px;
+      min-height: 2em;
+    }
+    .mapping-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(50px, 1fr));
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .mapping-item {
+      text-align: center;
+      padding: 5px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      background-color: #f9f9f9;
+    }
+    .cipher-letter {
+      font-weight: bold;
+      display: block;
+      margin-bottom: 5px;
+    }
+    input.mapping-input {
+      width: 22px;
+      height: 22px;
+      font-size: 1em;
+      text-align: center;
+    }
+    #message {
+      font-weight: bold;
+      font-size: 1.2em;
+      margin-top: 10px;
+      text-align: center;
+      min-height: 1.4em;
+    }
+    .controls-row {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+    .mode-toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: #f0f0f0;
+      border-radius: 5px;
+    }
+    .mode-toggle label {
+      font-weight: bold;
+    }
+    #progressInfo {
+      text-align: center;
+      font-size: 0.95em;
+      color: #555;
+      margin-bottom: 10px;
+    }
+    #bookInfo {
+      text-align: center;
+      font-size: 0.9em;
+      color: #666;
+      margin-bottom: 15px;
+      font-style: italic;
+    }
+    .danger-btn {
+      background-color: #dc3545;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .danger-btn:hover {
+      background-color: #c82333;
+    }
+    .secondary-btn {
+      background-color: #6c757d;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .secondary-btn:hover {
+      background-color: #5a6268;
+    }
+    .skip-btn {
+      background-color: #ffc107;
+      color: #212529;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .skip-btn:hover {
+      background-color: #e0a800;
+    }
+    .chapter-btn {
+      background-color: #17a2b8;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .chapter-btn:hover {
+      background-color: #138496;
+    }
+    #chapterInfo {
+      text-align: center;
+      font-size: 0.9em;
+      color: #007bff;
+      margin-bottom: 10px;
+    }
+    .chapter-select {
+      padding: 8px 12px;
+      font-size: 1em;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+      max-width: 200px;
+    }
+  </style>
+</head>
+<body>
+  <div class="puzzle-block">
+    <div id="cipherLine" class="puzzle-line"></div>
+    <div id="guessLine" class="puzzle-line"></div>
+  </div>
+
+  <div id="mappingContainer" class="mapping-grid"></div>
+
+  <div id="message"></div>
+  
+  <div id="chapterInfo"></div>
+  <div id="progressInfo"></div>
+  <div id="bookInfo"></div>
+
+  <div id="uploader">
+    <label for="epubInput"><strong>Upload an EPUB file:</strong></label>
+    <input type="file" id="epubInput" accept=".epub">
+  </div>
+
+  <!-- Mode toggle and buttons -->
+  <div class="controls-row">
+    <div class="mode-toggle">
+      <label for="modeSelect">Mode:</label>
+      <select id="modeSelect">
+        <option value="random">Random</option>
+        <option value="sequential">Sequential</option>
+      </select>
+    </div>
+    <button id="newPuzzleBtn">New Puzzle</button>
+    <button id="skipBtn" class="skip-btn" style="display: none;">Skip</button>
+  </div>
+
+  <!-- Chapter navigation (only visible in sequential mode with chapters) -->
+  <div class="controls-row" id="chapterControls" style="display: none;">
+    <button id="prevChapterBtn" class="chapter-btn">← Prev Chapter</button>
+    <select id="chapterSelect" class="chapter-select">
+      <option value="">Jump to chapter...</option>
+    </select>
+    <button id="nextChapterBtn" class="chapter-btn">Next Chapter →</button>
+  </div>
+
+  <div class="controls-row">
+    <button id="clearDataBtn" class="danger-btn">Clear All Data</button>
+  </div>
+
+  <script>
+    const STORAGE_KEYS = {
+      paragraphs: 'cryptoPuzzle_paragraphs',
+      chapters: 'cryptoPuzzle_chapters',
+      bookTitle: 'cryptoPuzzle_bookTitle',
+      sequentialIndex: 'cryptoPuzzle_sequentialIndex',
+      mode: 'cryptoPuzzle_mode'
+    };
+
+    const defaultParagraphs = [
+      "It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness.",
+      "In a hole in the ground there lived a hobbit. Not a nasty, dirty, wet hole, filled with the ends of worms and an oozy smell.",
+      "Call me Ishmael. Some years ago—never mind how long precisely—having little or no money in my purse."
+    ];
+
+    let availableParagraphs = [];
+    let chapters = [];
+    let bookTitle = "";
+    let sequentialIndex = 0;
+    let currentMode = "random";
+    let currentPuzzleIndex = 0;
+
+    let originalParagraph = "";
+    let cipherParagraph = "";
+    let positions = [];
+    let substitutionMapping = {};
+
+    // ==================== LocalStorage Functions ====================
+
+    function saveToStorage() {
+      try {
+        localStorage.setItem(STORAGE_KEYS.paragraphs, JSON.stringify(availableParagraphs));
+        localStorage.setItem(STORAGE_KEYS.chapters, JSON.stringify(chapters));
+        localStorage.setItem(STORAGE_KEYS.bookTitle, bookTitle);
+        localStorage.setItem(STORAGE_KEYS.sequentialIndex, sequentialIndex.toString());
+        localStorage.setItem(STORAGE_KEYS.mode, currentMode);
+      } catch (e) {
+        console.warn("Could not save to localStorage:", e);
+      }
+    }
+
+    function loadFromStorage() {
+      try {
+        const storedParagraphs = localStorage.getItem(STORAGE_KEYS.paragraphs);
+        const storedChapters = localStorage.getItem(STORAGE_KEYS.chapters);
+        const storedTitle = localStorage.getItem(STORAGE_KEYS.bookTitle);
+        const storedIndex = localStorage.getItem(STORAGE_KEYS.sequentialIndex);
+        const storedMode = localStorage.getItem(STORAGE_KEYS.mode);
+
+        if (storedParagraphs) {
+          availableParagraphs = JSON.parse(storedParagraphs);
+        } else {
+          availableParagraphs = defaultParagraphs.slice();
+        }
+
+        if (storedChapters) {
+          chapters = JSON.parse(storedChapters);
+        } else {
+          chapters = [];
+        }
+
+        bookTitle = storedTitle || "";
+        sequentialIndex = storedIndex ? parseInt(storedIndex, 10) : 0;
+        currentMode = storedMode || "random";
+
+        document.getElementById("modeSelect").value = currentMode;
+
+      } catch (e) {
+        console.warn("Could not load from localStorage:", e);
+        availableParagraphs = defaultParagraphs.slice();
+        chapters = [];
+        bookTitle = "";
+        sequentialIndex = 0;
+        currentMode = "random";
+      }
+    }
+
+    function clearAllData() {
+      if (!confirm("Are you sure you want to clear all saved data? This will remove your book and progress.")) {
+        return;
+      }
+      try {
+        localStorage.removeItem(STORAGE_KEYS.paragraphs);
+        localStorage.removeItem(STORAGE_KEYS.chapters);
+        localStorage.removeItem(STORAGE_KEYS.bookTitle);
+        localStorage.removeItem(STORAGE_KEYS.sequentialIndex);
+        localStorage.removeItem(STORAGE_KEYS.mode);
+      } catch (e) {
+        console.warn("Could not clear localStorage:", e);
+      }
+
+      availableParagraphs = defaultParagraphs.slice();
+      chapters = [];
+      bookTitle = "";
+      sequentialIndex = 0;
+      currentMode = "random";
+      document.getElementById("modeSelect").value = "random";
+
+      updateBookInfo();
+      updateProgressInfo();
+      updateChapterControls();
+      initPuzzle();
+      alert("All data cleared. Using default sample paragraphs.");
+    }
+
+    // ==================== UI Update Functions ====================
+
+    function updateBookInfo() {
+      const bookInfoEl = document.getElementById("bookInfo");
+      if (bookTitle) {
+        bookInfoEl.textContent = `Currently loaded: "${bookTitle}" (${availableParagraphs.length} paragraphs, ${chapters.length} chapters detected)`;
+      } else if (availableParagraphs.length > 0 && availableParagraphs !== defaultParagraphs) {
+        bookInfoEl.textContent = `Book loaded (${availableParagraphs.length} paragraphs)`;
+      } else {
+        bookInfoEl.textContent = "No book loaded - using sample paragraphs";
+      }
+    }
+
+    function updateProgressInfo() {
+      const progressEl = document.getElementById("progressInfo");
+      const skipBtn = document.getElementById("skipBtn");
+      
+      if (currentMode === "sequential" && availableParagraphs.length > 0) {
+        progressEl.textContent = `Progress: ${sequentialIndex} / ${availableParagraphs.length} paragraphs completed (Currently viewing #${currentPuzzleIndex + 1})`;
+        skipBtn.style.display = "inline-block";
+      } else {
+        progressEl.textContent = "";
+        skipBtn.style.display = "none";
+      }
+    }
+
+    function updateChapterInfo() {
+      const chapterInfoEl = document.getElementById("chapterInfo");
+      
+      if (currentMode === "sequential" && chapters.length > 0) {
+        let currentChapter = null;
+        for (let i = chapters.length - 1; i >= 0; i--) {
+          if (chapters[i].index <= currentPuzzleIndex) {
+            currentChapter = chapters[i];
+            break;
+          }
+        }
+        if (currentChapter) {
+          chapterInfoEl.textContent = `📖 ${currentChapter.title}`;
+        } else {
+          chapterInfoEl.textContent = "";
+        }
+      } else {
+        chapterInfoEl.textContent = "";
+      }
+    }
+
+    function updateChapterControls() {
+      const chapterControls = document.getElementById("chapterControls");
+      const chapterSelect = document.getElementById("chapterSelect");
+      
+      if (currentMode === "sequential" && chapters.length > 0) {
+        chapterControls.style.display = "flex";
+        
+        chapterSelect.innerHTML = '<option value="">Jump to chapter...</option>';
+        chapters.forEach((ch, idx) => {
+          const option = document.createElement("option");
+          option.value = ch.index;
+          option.textContent = ch.title;
+          chapterSelect.appendChild(option);
+        });
+      } else {
+        chapterControls.style.display = "none";
+      }
+    }
+
+    // ==================== Chapter Navigation ====================
+
+    function skipPuzzle() {
+      if (currentMode !== "sequential") return;
+      
+      sequentialIndex = currentPuzzleIndex + 1;
+      if (sequentialIndex >= availableParagraphs.length) {
+        alert("You've reached the end of the book!");
+        sequentialIndex = availableParagraphs.length;
+        saveToStorage();
+        updateProgressInfo();
+        return;
+      }
+      saveToStorage();
+      initPuzzle();
+    }
+
+    function goToNextChapter() {
+      if (chapters.length === 0) return;
+      
+      for (let i = 0; i < chapters.length; i++) {
+        if (chapters[i].index > currentPuzzleIndex) {
+          jumpToIndex(chapters[i].index);
+          return;
+        }
+      }
+      alert("No more chapters ahead.");
+    }
+
+    function goToPrevChapter() {
+      if (chapters.length === 0) return;
+      
+      let prevChapter = null;
+      for (let i = 0; i < chapters.length; i++) {
+        if (chapters[i].index >= currentPuzzleIndex) {
+          break;
+        }
+        prevChapter = chapters[i];
+      }
+      
+      if (prevChapter) {
+        jumpToIndex(prevChapter.index);
+      } else {
+        alert("No previous chapter.");
+      }
+    }
+
+    function jumpToIndex(index) {
+      index = parseInt(index, 10);
+      if (isNaN(index) || index < 0 || index >= availableParagraphs.length) return;
+      
+      if (index > sequentialIndex) {
+        sequentialIndex = index;
+      }
+      currentPuzzleIndex = index;
+      saveToStorage();
+      loadPuzzleAtIndex(index);
+    }
+
+    function loadPuzzleAtIndex(index) {
+      document.getElementById("message").textContent = "";
+      
+      if (index < 0 || index >= availableParagraphs.length) {
+        alert("Invalid paragraph index.");
+        return;
+      }
+
+      currentPuzzleIndex = index;
+      originalParagraph = availableParagraphs[index];
+      substitutionMapping = generateMapping();
+      cipherParagraph = encryptText(originalParagraph, substitutionMapping);
+
+      buildMappingGrid();
+      buildPuzzleLines(cipherParagraph);
+      updateProgressInfo();
+      updateChapterInfo();
+    }
+
+    // ==================== Puzzle Logic ====================
+
+    function generateMapping() {
+      const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split('');
+      const shuffled = alphabet.slice();
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      const mapping = {};
+      for (let i = 0; i < alphabet.length; i++) {
+        mapping[alphabet[i]] = shuffled[i];
+      }
+      return mapping;
+    }
+
+    function encryptText(text, mapping) {
+      return text.toUpperCase().split('').map(ch => {
+        if (/[A-Z]/.test(ch)) {
+          return mapping[ch];
+        } else {
+          return ch;
+        }
+      }).join('');
+    }
+
+    function buildPuzzleLines(text) {
+      positions = [];
+      const cipherArray = text.split('');
+      let cipherLine = "";
+      let guessLine  = "";
+
+      cipherArray.forEach((ch, idx) => {
+        if (/[A-Z]/.test(ch)) {
+          cipherLine += ch;
+          guessLine  += "_";
+          positions.push({ letter: ch }); 
+        } else {
+          cipherLine += ch;
+          guessLine  += ch;
+          positions.push({ letter: null }); 
+        }
+      });
+
+      document.getElementById("cipherLine").textContent = cipherLine;
+      document.getElementById("guessLine").textContent  = guessLine;
+    }
+
+    function updateDecrypted() {
+      const currentMapping = {};
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split('').forEach(letter => {
+        const input = document.querySelector(`input[data-letter="${letter}"]`);
+        const val = input.value.trim().toUpperCase();
+        currentMapping[letter] = val || "";
+      });
+
+      let guessLine = "";
+      for (let i = 0; i < positions.length; i++) {
+        const info = positions[i];
+        if (info.letter) {
+          const guess = currentMapping[info.letter];
+          guessLine += guess ? guess : "_";
+        } else {
+          guessLine += cipherParagraph[i];
+        }
+      }
+
+      document.getElementById("guessLine").textContent = guessLine;
+
+      if (guessLine === originalParagraph.toUpperCase()) {
+        document.getElementById("message").textContent = "Congratulations, you solved it!";
+        
+        if (currentMode === "sequential") {
+          if (currentPuzzleIndex >= sequentialIndex) {
+            sequentialIndex = currentPuzzleIndex + 1;
+            saveToStorage();
+            updateProgressInfo();
+          }
+        }
+      } else {
+        document.getElementById("message").textContent = "";
+      }
+    }
+
+    function onMappingInput(e) {
+      e.target.value = e.target.value.toUpperCase().slice(0, 1);
+      updateDecrypted();
+    }
+
+    function buildMappingGrid() {
+      const container = document.getElementById("mappingContainer");
+      container.innerHTML = "";
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split('').forEach(letter => {
+        const item = document.createElement("div");
+        item.classList.add("mapping-item");
+
+        const label = document.createElement("span");
+        label.classList.add("cipher-letter");
+        label.textContent = letter;
+        item.appendChild(label);
+
+        const input = document.createElement("input");
+        input.setAttribute("maxlength", "1");
+        input.classList.add("mapping-input");
+        input.dataset.letter = letter;
+        input.addEventListener("input", onMappingInput);
+        item.appendChild(input);
+
+        container.appendChild(item);
+      });
+    }
+
+    function initPuzzle() {
+      document.getElementById("message").textContent = "";
+      
+      if (!availableParagraphs || availableParagraphs.length === 0) {
+        alert("No paragraphs available. Please upload an EPUB file with valid content.");
+        return;
+      }
+
+      if (currentMode === "sequential") {
+        let idx = sequentialIndex;
+        if (idx >= availableParagraphs.length) {
+          alert("You've completed the entire book! Starting over from the beginning.");
+          sequentialIndex = 0;
+          idx = 0;
+          saveToStorage();
+        }
+        currentPuzzleIndex = idx;
+        originalParagraph = availableParagraphs[idx];
+      } else {
+        const idx = Math.floor(Math.random() * availableParagraphs.length);
+        currentPuzzleIndex = idx;
+        originalParagraph = availableParagraphs[idx];
+      }
+
+      substitutionMapping = generateMapping();
+      cipherParagraph = encryptText(originalParagraph, substitutionMapping);
+
+      buildMappingGrid();
+      buildPuzzleLines(cipherParagraph);
+      updateProgressInfo();
+      updateChapterInfo();
+    }
+
+    // ==================== EPUB Processing with OPF Spine Parsing ====================
+
+    /**
+     * Normalize a path by resolving .. and . segments and converting to forward slashes
+     */
+    function normalizePath(path) {
+      // Convert backslashes to forward slashes
+      path = path.replace(/\\/g, '/');
+      
+      // Split into segments
+      const segments = path.split('/');
+      const result = [];
+      
+      for (const segment of segments) {
+        if (segment === '..') {
+          result.pop();
+        } else if (segment !== '.' && segment !== '') {
+          result.push(segment);
+        }
+      }
+      
+      return result.join('/');
+    }
+
+    /**
+     * Resolve a relative href against a base path (OPF directory)
+     */
+    function resolveHref(basePath, href) {
+      // Remove any fragment identifiers
+      href = href.split('#')[0];
+      
+      if (href.startsWith('/')) {
+        // Absolute path from root
+        return normalizePath(href.substring(1));
+      }
+      
+      // Relative path - combine with base
+      const combined = basePath ? basePath + '/' + href : href;
+      return normalizePath(combined);
+    }
+
+    /**
+     * Parse the OPF file to get the spine reading order
+     */
+    function parseOPF(opfContent, opfPath) {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(opfContent, "application/xml");
+      
+      // Get OPF directory for resolving relative paths
+      const opfDir = opfPath.includes('/') ? opfPath.substring(0, opfPath.lastIndexOf('/')) : '';
+      
+      // Build manifest: id -> href mapping
+      const manifest = {};
+      const manifestEl = doc.querySelector('manifest');
+      if (manifestEl) {
+        const items = manifestEl.querySelectorAll('item');
+        items.forEach(item => {
+          const id = item.getAttribute('id');
+          const href = item.getAttribute('href');
+          const mediaType = item.getAttribute('media-type') || '';
+          
+          if (id && href) {
+            // Only include HTML/XHTML content
+            if (mediaType.includes('html') || /\.x?html?$/i.test(href)) {
+              manifest[id] = resolveHref(opfDir, href);
+            }
+          }
+        });
+      }
+      
+      // Get spine order
+      const spineOrder = [];
+      const spineEl = doc.querySelector('spine');
+      if (spineEl) {
+        const itemrefs = spineEl.querySelectorAll('itemref');
+        itemrefs.forEach(itemref => {
+          const idref = itemref.getAttribute('idref');
+          if (idref && manifest[idref]) {
+            spineOrder.push(manifest[idref]);
+          }
+        });
+      }
+      
+      return spineOrder;
+    }
+
+    /**
+     * Find and parse container.xml to locate the OPF file
+     */
+    async function findOPFPath(zip) {
+      try {
+        const containerFile = zip.file('META-INF/container.xml');
+        if (!containerFile) {
+          console.warn('No container.xml found');
+          return null;
+        }
+        
+        const containerContent = await containerFile.async('text');
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(containerContent, "application/xml");
+        
+        // Find rootfile element
+        const rootfile = doc.querySelector('rootfile');
+        if (rootfile) {
+          return rootfile.getAttribute('full-path');
+        }
+        
+        return null;
+      } catch (e) {
+        console.warn('Error parsing container.xml:', e);
+        return null;
+      }
+    }
+
+    /**
+     * Process EPUB with proper spine order
+     */
+    async function processEpub(file) {
+      const reader = new FileReader();
+      
+      reader.onload = async function(e) {
+        try {
+          const zip = await JSZip.loadAsync(e.target.result);
+          
+          // Step 1: Find OPF path from container.xml
+          const opfPath = await findOPFPath(zip);
+          let spineOrder = [];
+          
+          if (opfPath) {
+            // Step 2: Parse OPF for spine order
+            const opfFile = zip.file(opfPath);
+            if (opfFile) {
+              const opfContent = await opfFile.async('text');
+              spineOrder = parseOPF(opfContent, opfPath);
+              console.log('Spine order from OPF:', spineOrder);
+            }
+          }
+          
+          // Step 3: Collect all HTML files from the zip
+          const allHtmlFiles = {};
+          zip.forEach((relativePath, zipEntry) => {
+            if (/\.x?html?$/i.test(relativePath)) {
+              // Normalize the path for matching
+              allHtmlFiles[normalizePath(relativePath)] = zipEntry;
+            }
+          });
+          
+          // Step 4: Build ordered file list
+          let orderedFiles = [];
+          
+          if (spineOrder.length > 0) {
+            // Use spine order
+            for (const spinePath of spineOrder) {
+              if (allHtmlFiles[spinePath]) {
+                orderedFiles.push({
+                  path: spinePath,
+                  entry: allHtmlFiles[spinePath]
+                });
+                // Remove from allHtmlFiles so we can catch any extras
+                delete allHtmlFiles[spinePath];
+              } else {
+                console.warn('Spine references file not found:', spinePath);
+              }
+            }
+            
+            // Add any remaining HTML files not in spine (rare, but possible)
+            for (const [path, entry] of Object.entries(allHtmlFiles)) {
+              orderedFiles.push({ path, entry });
+            }
+          } else {
+            // Fallback to alphabetical if no spine found
+            console.warn('No spine found, falling back to alphabetical order');
+            orderedFiles = Object.entries(allHtmlFiles)
+              .map(([path, entry]) => ({ path, entry }))
+              .sort((a, b) => a.path.localeCompare(b.path));
+          }
+          
+          console.log('Final file order:', orderedFiles.map(f => f.path));
+          
+          // Step 5: Extract paragraphs in order
+          const filesData = await Promise.all(
+            orderedFiles.map(f => f.entry.async('text').then(content => ({
+              path: f.path,
+              content: content
+            })))
+          );
+          
+          let paragraphs = [];
+          let detectedChapters = [];
+
+          filesData.forEach((fileData) => {
+            const content = fileData.content;
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(content, "text/html");
+
+            // Check for chapter headings
+            const headings = doc.querySelectorAll("h1, h2, h3");
+            let fileHeadings = [];
+            headings.forEach(h => {
+              const text = h.textContent.trim();
+              if (text.length > 0 && text.length < 100) {
+                fileHeadings.push(text);
+              }
+            });
+
+            let markedChapterForFile = false;
+
+            const ps = doc.querySelectorAll("p");
+            ps.forEach((p) => {
+              const text = p.textContent.trim();
+              if (text.length > 20) {
+                const paragraphIndex = paragraphs.length;
+                paragraphs.push(text);
+
+                if (!markedChapterForFile && fileHeadings.length > 0) {
+                  let chapterTitle = fileHeadings[0];
+                  if (chapterTitle.length > 50) {
+                    chapterTitle = chapterTitle.substring(0, 47) + "...";
+                  }
+                  detectedChapters.push({
+                    index: paragraphIndex,
+                    title: chapterTitle
+                  });
+                  markedChapterForFile = true;
+                }
+              }
+            });
+          });
+
+          if (paragraphs.length === 0) {
+            alert("No paragraphs found in the EPUB file.");
+          } else {
+            availableParagraphs = paragraphs;
+            chapters = detectedChapters;
+            bookTitle = file.name.replace(/\.epub$/i, '');
+            sequentialIndex = 0;
+            
+            saveToStorage();
+            updateBookInfo();
+            updateChapterControls();
+            
+            const spineMsg = spineOrder.length > 0 ? "✓ Using OPF spine order" : "⚠ Fallback to alphabetical order";
+            alert(`EPUB loaded successfully!\n• ${paragraphs.length} paragraphs\n• ${chapters.length} chapters detected\n• ${spineMsg}\n\nProgress has been reset.`);
+            initPuzzle();
+          }
+          
+        } catch (err) {
+          console.error('EPUB processing error:', err);
+          alert("Error reading EPUB file: " + err.message);
+        }
+      };
+      
+      reader.readAsArrayBuffer(file);
+    }
+
+    // ==================== Event Listeners ====================
+
+    document.getElementById("epubInput").addEventListener("change", function(e) {
+      const file = e.target.files[0];
+      if (file) {
+        processEpub(file);
+      }
+    });
+
+    document.getElementById("newPuzzleBtn").addEventListener("click", initPuzzle);
+    document.getElementById("skipBtn").addEventListener("click", skipPuzzle);
+    document.getElementById("clearDataBtn").addEventListener("click", clearAllData);
+
+    document.getElementById("nextChapterBtn").addEventListener("click", goToNextChapter);
+    document.getElementById("prevChapterBtn").addEventListener("click", goToPrevChapter);
+    
+    document.getElementById("chapterSelect").addEventListener("change", function(e) {
+      if (e.target.value) {
+        jumpToIndex(e.target.value);
+        e.target.value = "";
+      }
+    });
+
+    document.getElementById("modeSelect").addEventListener("change", function(e) {
+      currentMode = e.target.value;
+      saveToStorage();
+      updateProgressInfo();
+      updateChapterControls();
+      initPuzzle();
+    });
+
+    // ==================== Initialization ====================
+
+    window.onload = function() {
+      loadFromStorage();
+      updateBookInfo();
+      updateProgressInfo();
+      updateChapterControls();
+      initPuzzle();
+    };
+  </script>
+</body>
+</html>
