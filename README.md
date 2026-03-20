@@ -2,7 +2,9 @@ This Program takes an Epub you give it (please stick to legally aquired ones, I 
 
 It's not perfect, and it has a few quirks which could probably be improved like sometimes adjusting around the keyboard too much, but I was just making it for myself and it's been very useful for me. 
 
-IMPORTANT: This code uses LocalStorage for the most recent file so you don't have to add a file every time. THIS IS NOT A SECURE STORAGE AREA, SO DON'T USE ANYTHING SENSITIVE!!!! It shouldn't cause any security issues, as long as you just recognize it isn't fully private and other sites might be able to access the data there if they know to look. My goal was getting something I could play on my phone, without having to host a webapp or something.
+IMPORTANT: This code uses LocalStorage for the most recent file so you don't have to add a file every time. THIS IS NOT A SECURE STORAGE AREA, SO DON'T USE ANYTHING SENSITIVE!!!! It shouldn't cause any security issues, as long as you just recognize it isn't perfectly secure, and some attacks can get into it if something else gets there somehow. My goal was getting something I could play on my phone, without having to host a webapp or something.
+
+By default, other sites shouldn't see it, I've just seen that it is still pretty insecure in terms of finding ways in.
 
 
 
