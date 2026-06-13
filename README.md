@@ -14,3 +14,5 @@ If you find use in it or want to improve it, feel free.
 This has been an ongoing project for probably a year now. Mix of vibe coded (multiple different AIs at different times) and not, features added and modified. I'm not trying to sell this as perfect software, it's just software I personally find a lot of enjoyment in. 
 
 This is probably about the 10th version or so, at time of original upload. I most recently added something in January, I think.
+
+Icon made by Delapouite. Available on https://game-icons.net
