@@ -3,7 +3,9 @@ const CACHE_NAME = 'game-cache-v1';
 const ASSETS_TO_CACHE = [
   './',
   'index.html',
-  'manifest.json'
+  'manifest.json',
+  'archive-research.png',
+  'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.0/jszip.min.js'
 ];
 
 // 1. Save the game files to cache immediately upon installation
