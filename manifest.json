@@ -10,7 +10,14 @@
       "src": "archive-research.png",
       "sizes": "512x512",
       "type": "image/png"
+      "purpose": "any"
+    },
+    {
+      "src": "archive-research.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }
-}
+
